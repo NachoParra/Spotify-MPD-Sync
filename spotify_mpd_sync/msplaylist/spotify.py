@@ -1,23 +1,46 @@
 #! /usr/bin/env python
 
 import spotipy
+from spotipy import oauth2
 from spotipy.oauth2 import SpotifyClientCredentials
 from mpd import MPDClient
 from mpd.base import CommandError
 from collections import defaultdict
 from re import sub
 from os import environ
+import os
 
 class Spotify():
     def __init__(self):
+        self.client_id = os.getenv('SPOTIPY_CLIENT_ID')
+        self.client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
+        self.redirect_uri = os.getenv('SPOTIPY_REDIRECT_URI')
         self.username = environ.get("SPOTIFY_USERNAME")
-        self.client_credentials_manager = SpotifyClientCredentials()
-        self.sp = spotipy.Spotify(
-                client_credentials_manager=self.client_credentials_manager
-                )
+        self.cache_path = ".cache-" + str(self.username)
+        self.scope = 'user-library-read playlist-read-private user-read-currently-playing'
+        self.sp_oauth = oauth2.SpotifyOAuth(self.client_id, self.client_secret, self.redirect_uri, scope=self.scope, cache_path=self.cache_path)
+        token_info = self.sp_oauth.get_cached_token()
+        if token_info:
+            print ("Found cached token!")
+            access_token = token_info['access_token']
+        else:
+            while True:
+                auth_url = sp_oauth.get_authorize_url()
+                print(auth_url)
+                response = input("Enter the URL you were redirected to: ")
+                code = sp_oauth.parse_response_code(response)
+                token_info = sp_oauth.get_access_token(code)
+                # Auth'ed API request
+                if token_info:
+                    access_token = token_info['access_token']
+                    break
+
+        self.sp = spotipy.Spotify(access_token)
 
         self.mpd_client = MPDClient()
-        self.mpd_client.connect("127.0.0.1", 6600)
+        #self.mpd_client.connect("127.0.0.1", 6600)
+        self.mpd_server = environ.get("MOPIDY_SERVER")
+        self.mpd_client.connect(str(self.mpd_server), 6600)
 
         self._playlists = defaultdict(lambda: [])
 
@@ -32,7 +55,8 @@ class Spotify():
         if self._playlists:
             return self._playlists
 
-        playlists = self.sp.user_playlists(self.username)
+        #playlists = self.sp.user_playlists(self.username)
+        playlists = self.sp.current_user_playlists()
 
         while playlists:
             for playlist in playlists['items']:
